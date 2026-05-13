@@ -14,6 +14,7 @@ Partition keying:
 from __future__ import annotations
 import json
 import os
+import time
 from typing import Awaitable, Callable, Iterable
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -63,18 +64,24 @@ class CircuitBreaker:
         self.opened_at: float | None = None
 
     def allow(self) -> bool:
-        # TODO (student): implement open/half-open/closed state machine
-        return True
+        if self.opened_at is None:
+            return True
+        elapsed = time.time() - self.opened_at
+        if elapsed >= self.reset_after_s:
+            return True
+        return False
 
     def record_success(self) -> None:
         self.fails = 0
+        self.opened_at = None
 
     def record_failure(self) -> None:
         self.fails += 1
+        if self.fails >= self.fail_threshold:
+            self.opened_at = time.time()
 
 
 _breaker = CircuitBreaker()
-
 
 async def publish(topic: str, event: dict, key: str | None = None) -> None:
     """Outbox-lite: caller should db-write THEN await publish() in same async block."""
