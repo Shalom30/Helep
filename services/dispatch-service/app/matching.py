@@ -53,9 +53,22 @@ class CredibilityWeightedMatcher:
             return None
         return {"id": best["id"], "score": best_score}
 
+class RoundRobinMatcher:
+    """Assigns responders in turn regardless of distance. Pattern: Strategy."""
+    _index = 0
+
+    def pick(self, victim_lat, victim_lon, responders):
+        pool = list(responders)
+        if not pool:
+            return None
+        r = pool[RoundRobinMatcher._index % len(pool)]
+        RoundRobinMatcher._index += 1
+        return {"id": r["id"], "round_robin_index": RoundRobinMatcher._index - 1}
 
 def matcher() -> Matcher:
     name = os.getenv("MATCHER", "nearest").lower()
     if name == "credibility":
         return CredibilityWeightedMatcher()
+    if name == "roundrobin":
+        return RoundRobinMatcher()
     return NearestMatcher()
