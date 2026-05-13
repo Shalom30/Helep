@@ -1,0 +1,23 @@
+image:
+  registry: docker.io
+  pullPolicy: Never
+
+jwtSecret: "dev-secret-change-in-prod"
+kafkaBootstrap: "helep-kafka-bootstrap.kafka.svc.cluster.local:9092"
+
+services:
+  user:
+    image: shalom30/user-service:latest
+    port: 8001
+  sos:
+    image: shalom30/sos-service:latest
+    port: 8002
+  dispatch:
+    image: shalom30/dispatch-service:latest
+    port: 8003
+  notification:
+    image: shalom30/notification-service:latest
+    port: 8004
+  analytics:
+    image: shalom30/analytics-service:latest
+    port: 8005

@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: helep-monitor
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels: {}
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - path: /metrics
+      interval: 15s
+      port: http

@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: {{ .Values.services.user.image }}
+          ports:
+            - containerPort: {{ .Values.services.user.port }}
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: {{ .Values.kafkaBootstrap }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: helep-secret
+                  key: JWT_SECRET
+            - name: DB_PATH
+              value: /data/user.db
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.services.user.port }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.services.user.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+spec:
+  selector:
+    app: user-service
+  ports:
+    - port: {{ .Values.services.user.port }}
+      targetPort: {{ .Values.services.user.port }}

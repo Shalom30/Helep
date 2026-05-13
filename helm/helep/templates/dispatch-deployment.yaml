@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dispatch-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dispatch-service
+  template:
+    metadata:
+      labels:
+        app: dispatch-service
+    spec:
+      containers:
+        - name: dispatch-service
+          image: {{ .Values.services.dispatch.image }}
+          ports:
+            - containerPort: {{ .Values.services.dispatch.port }}
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: {{ .Values.kafkaBootstrap }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: helep-secret
+                  key: JWT_SECRET
+            - name: DB_PATH
+              value: /data/dispatch.db
+            - name: MATCHER
+              value: "nearest"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.services.dispatch.port }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.services.dispatch.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dispatch-service
+spec:
+  selector:
+    app: dispatch-service
+  ports:
+    - port: {{ .Values.services.dispatch.port }}
+      targetPort: {{ .Values.services.dispatch.port }}

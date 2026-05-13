@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sos-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sos-service
+  template:
+    metadata:
+      labels:
+        app: sos-service
+    spec:
+      containers:
+        - name: sos-service
+          image: {{ .Values.services.sos.image }}
+          ports:
+            - containerPort: {{ .Values.services.sos.port }}
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: {{ .Values.kafkaBootstrap }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: helep-secret
+                  key: JWT_SECRET
+            - name: DB_PATH
+              value: /data/sos.db
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.services.sos.port }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.services.sos.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sos-service
+spec:
+  selector:
+    app: sos-service
+  ports:
+    - port: {{ .Values.services.sos.port }}
+      targetPort: {{ .Values.services.sos.port }}

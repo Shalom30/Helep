@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+        - name: notification-service
+          image: {{ .Values.services.notification.image }}
+          ports:
+            - containerPort: {{ .Values.services.notification.port }}
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: {{ .Values.kafkaBootstrap }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: helep-secret
+                  key: JWT_SECRET
+            - name: DB_PATH
+              value: /data/notification.db
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.services.notification.port }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.services.notification.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - port: {{ .Values.services.notification.port }}
+      targetPort: {{ .Values.services.notification.port }}
