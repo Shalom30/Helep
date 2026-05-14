@@ -86,6 +86,33 @@ Analytics & Statistics.
 | Analytics & Statistics | analytics-service | Read-only consumer; isolation prevents analytics load from affecting dispatch |
 | Feedback & Review | out of scope | Deferred — no ASR depends on it for MVP |
 
+### Diagram 1 — System Architecture
+
+```
++------------------+     +------------------+     +-------------------+
+|   user-service   |     |   sos-service    |     | dispatch-service  |
+|   port: 8001     |     |   port: 8002     |     |   port: 8003      |
+|   JWT + bcrypt   |     |   SOS trigger    |     |   nearest match   |
++--------+---------+     +--------+---------+     +--------+----------+
+         |                        |                        |
+         +------------------------+------------------------+
+                                  |
+                     +------------+------------+
+                     |       Apache Kafka       |
+                     |  topics: sos.triggered   |
+                     |  responder.assigned      |
+                     |  sos.cancelled etc.      |
+                     +------------+------------+
+                                  |
+              +-------------------+-------------------+
+              |                                       |
++-------------+----------+             +--------------+---------+
+| notification-service   |             |  analytics-service     |
+| port: 8004             |             |  port: 8005            |
+| SMS simulation         |             |  police dashboard      |
++------------------------+             +------------------------+
+```
+
 ## 5. Architectural Style — Choice & Justification
 
 **Chosen: Microservices + Event-Driven Architecture (prescribed by SRS)**
@@ -123,6 +150,41 @@ Kafka's async messaging keeps end-to-end latency under 1s (SRS §4).
 
 See patterns.pdf for full code citations.
 
+### Diagram 2 — Saga Choreography Flow
+
+```
+HAPPY PATH:
+===========
+Citizen
+   |
+   | POST /sos  {lat, lon}
+   v
+sos-service ──publishes──> [sos.triggered] ──> dispatch-service
+                                                      |
+                                               picks nearest free
+                                               responder (Strategy)
+                                                      |
+                                    publishes──> [responder.assigned] ──> notification-service
+                                                                                |
+                                                                         logs "SMS sent"
+                                                                                |
+                                                                    publishes──> [notification.sent]
+                                                                                        |
+                                                                               analytics-service
+                                                                               bumps counters
+
+CANCEL / COMPENSATION PATH:
+============================
+Citizen
+   |
+   | POST /sos/{id}/cancel
+   v
+sos-service ──publishes──> [sos.cancelled] ──> dispatch-service
+                                                      |
+                                             sets responder busy=0
+                                             marks assignment RELEASED
+```
+
 ## 7. Architecture Decision Records
 
 ### ADR-001: Kafka partition keying by incident_id
@@ -152,13 +214,48 @@ a single point of failure.
 ### ADR-003: Helm umbrella chart vs separate charts
 **Context:** 5 services need to be deployed together with shared
 config (JWT_SECRET, Kafka bootstrap address).
-**Decision:** Single Helm umbrella chart (`helm/helep`) with shared
+**Decision:** Single Helm umbrella chart (`charts/helep`) with shared
 `values.yaml`. All services deployed in one `helm install` command.
 **Consequences:** Atomic deployment — all services upgrade together.
 Shared values eliminate config drift between services.
 **Alternatives:** Separate charts per service — rejected because it
 requires 5 separate install commands and makes shared secret
 management complex.
+
+### Diagram 3 — Kubernetes Deployment Architecture
+
+```
++========================= Kubernetes Cluster ==========================+
+|                                                                       |
+|  Namespace: default                                                   |
+|  +----------------------------------------------------------------+   |
+|  |  Helm Release: helep                                           |   |
+|  |                                                                |   |
+|  |  [user-service Pod]      [sos-service Pod]                     |   |
+|  |   PVC: user.db            PVC: sos.db                          |   |
+|  |   HPA: min=1 max=3        HPA: min=1 max=3                     |   |
+|  |                                                                |   |
+|  |  [dispatch-service Pod]  [notification-service Pod]            |   |
+|  |   PVC: dispatch.db        PVC: notification.db                 |   |
+|  |   MATCHER=nearest         HPA: min=1 max=3                     |   |
+|  |                                                                |   |
+|  |  [analytics-service Pod]                                       |   |
+|  |   PVC: analytics.db                                            |   |
+|  |                                                                |   |
+|  |  Ingress (helep.local) → user/sos/analytics services          |   |
+|  |  Secret: JWT_SECRET       NetworkPolicy: default-deny          |   |
+|  +----------------------------------------------------------------+   |
+|                                                                       |
+|  Namespace: kafka                   Namespace: monitoring             |
+|  +-------------------------+   +--------------------------------+      |
+|  | Strimzi Operator        |   | Prometheus                     |      |
+|  | Kafka broker :9092      |   |   scrapes /metrics every 15s   |      |
+|  | 7 KafkaTopic CRDs       |   | Grafana :3000                  |      |
+|  | PodDisruptionBudget     |   |   dashboards/helep.json        |      |
+|  +-------------------------+   +--------------------------------+      |
+|                                                                       |
++=======================================================================+
+```
 
 ## 8. Trade-offs & Improvement Perspectives
 
@@ -170,7 +267,9 @@ running as a K8s StatefulSet with a PVC.
 **Weakness 2: Single Kafka broker**
 One broker means Kafka is a single point of failure. Fix: configure
 Strimzi KafkaNodePool with 3 replicas and set
-`min.insync.replicas=2` for true fault tolerance.
+`min.insync.replicas=2` for true fault tolerance. This limitation is
+explicitly acknowledged — production requires ≥ 3 brokers + ≥ 3
+controllers for replication and quorum (as noted in project spec).
 
 **Weakness 3: No distributed tracing**
 When an SOS fails silently, there is no way to trace which service
@@ -180,6 +279,7 @@ namespace.
 
 ## 9. Submission Checklist
 - [x] All 9 sections completed
+- [x] 3 diagrams included (System Architecture, Saga Flow, K8s Deployment)
 - [x] 3 ADRs included
 - [x] Every choice traced to SRS NFR or ASR
 - [x] Patterns summarised (full citations in patterns.pdf)
