@@ -172,6 +172,9 @@ database directly.
 `contacts` tables. `dispatch-service/app/db.py` manages only
 `responders` and `assignments`. There are no cross-service JOIN
 queries anywhere in the codebase.
+git add .
+git commit -m "docs: final patterns.md with line citations, design.md with diagrams"
+git push
 
 **Why it matters:** A shared database couples services at the schema
 level — a migration in one service's table can break another service
