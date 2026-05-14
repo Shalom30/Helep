@@ -1,0 +1,21 @@
+{
+  "title": "HELEP Dashboard",
+  "panels": [
+    {
+      "title": "SOS Triggers per second",
+      "type": "graph",
+      "targets": [{"expr": "rate(helep_sos_triggers_total[1m])"}]
+    },
+    {
+      "title": "User Signups Total",
+      "type": "stat",
+      "targets": [{"expr": "helep_user_signups_total"}]
+    },
+    {
+      "title": "User Logins Total",
+      "type": "stat",
+      "targets": [{"expr": "helep_user_logins_total"}]
+    }
+  ],
+  "schemaVersion": 16
+}

@@ -1,0 +1,71 @@
+pipeline {
+    agent any
+    environment {
+        DOCKERHUB_USER = 'shalom30'
+        KUBECONFIG = credentials('kubeconfig')
+    }
+    stages {
+        stage('Lint') {
+            steps {
+                sh 'pip install ruff && ruff check services/'
+            }
+        }
+        stage('Build Images') {
+            steps {
+                script {
+                    ['user-service','sos-service','dispatch-service',
+                     'notification-service','analytics-service'].each { svc ->
+                        sh "docker build -t ${DOCKERHUB_USER}/${svc}:${BUILD_NUMBER} services/${svc}"
+                    }
+                }
+            }
+        }
+        stage('Trivy Scan') {
+            steps {
+                script {
+                    ['user-service','sos-service','dispatch-service',
+                     'notification-service','analytics-service'].each { svc ->
+                        sh "trivy image --severity HIGH,CRITICAL --exit-code 1 ${DOCKERHUB_USER}/${svc}:${BUILD_NUMBER}"
+                    }
+                }
+            }
+        }
+        stage('Push Images') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-creds') {
+                        ['user-service','sos-service','dispatch-service',
+                         'notification-service','analytics-service'].each { svc ->
+                            sh "docker push ${DOCKERHUB_USER}/${svc}:${BUILD_NUMBER}"
+                        }
+                    }
+                }
+            }
+        }
+        stage('Deploy to K8s') {
+            steps {
+                sh "helm upgrade --install helep ./charts/helep -n helep --create-namespace"
+            }
+        }
+        stage('Smoke Test') {
+            steps {
+                sh '''
+                    kubectl rollout status deployment/user-service -n helep
+                    kubectl rollout status deployment/sos-service -n helep
+                    kubectl rollout status deployment/dispatch-service -n helep
+                    kubectl rollout status deployment/notification-service -n helep
+                    kubectl rollout status deployment/analytics-service -n helep
+                '''
+            }
+        }
+        stage('Prod Approval') {
+            steps {
+                input message: 'Deploy to production namespace?', ok: 'Approve'
+            }
+        }
+    }
+    post {
+        success { echo 'HELEP pipeline completed successfully' }
+        failure { echo 'Pipeline failed - check logs' }
+    }
+}
